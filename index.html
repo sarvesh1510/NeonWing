@@ -5,13 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>NEONWING — Arcade</title>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  /* Eliminate 300ms tap delay on all interactive elements */
+  a,button,.btn,.toggle,.icon-btn,.skin-btn,.nav-tab{touch-action:manipulation}
   :root{
     --neon-cyan:#00f5ff;--neon-pink:#ff006e;--neon-yellow:#ffbe0b;--neon-purple:#8338ec;
     --neon-green:#06d6a0;--bg-deep:#020814;--bg-mid:#050f1e;--glass:rgba(255,255,255,0.05);
     --glass-border:rgba(255,255,255,0.1);--font-main:'Courier New',monospace;
   }
-  html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:var(--font-main)}
+  html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:var(--font-main);
+    overscroll-behavior:none;-webkit-overflow-scrolling:touch;}
   #gameContainer{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--bg-deep)}
   #gameCanvas{display:block;cursor:pointer;touch-action:none}
   #ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
@@ -211,7 +214,17 @@
     text-transform:uppercase;transition:all 0.2s;font-family:var(--font-main);
   }
   .nav-tab.active,.nav-tab:hover{background:rgba(0,245,255,0.1);border-color:rgba(0,245,255,0.3);color:var(--neon-cyan)}
-  /* Scrollbar */
+  /* Mobile tap target enlargement & layout fixes */
+  @media (max-width: 480px) {
+    .icon-btn{width:44px;height:44px;font-size:18px}
+    .btn{padding:16px 28px;font-size:13px;letter-spacing:4px}
+    .score-panel{padding:16px 24px;margin:12px 0;min-width:0;width:80vw}
+    .btn-row{gap:8px}
+    .ach-grid{grid-template-columns:1fr 1fr;padding:12px;gap:8px}
+    .game-subtitle{letter-spacing:6px}
+    #comboDisplay{font-size:clamp(11px,3vw,18px)}
+    .score-val{font-size:clamp(24px,8vw,56px)}
+  }
   ::-webkit-scrollbar{width:4px}
   ::-webkit-scrollbar-track{background:rgba(255,255,255,0.02)}
   ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
@@ -248,6 +261,7 @@
         <button class="btn btn-secondary" id="introSettingsBtn">⚙ Settings</button>
         <button class="btn btn-secondary" id="introAchBtn">🏆 Achievements</button>
       </div>
+      <div id="mobileHint">Tap screen to fly</div>
     </div>
 
     <!-- Game Over Screen -->
@@ -882,8 +896,7 @@ class Game {
     this.hitStopFrames = 0;
     this.deathTimer = 0;
     this.lastTime = 0; this.animFrame = null;
-    this.W = 0; this.H = 0;
-    this.dpr = Math.min(window.devicePixelRatio||1, 2);
+    this.W = 0; this.H = 0; this.dpr = 1;
     this.scrollX = { bg1:0, bg2:0, bg3:0 };
     this.pendingFlap = false;
     this.easterEggKonami = []; this.konamiCode = [38,38,40,40,37,39,37,39,66,65];
@@ -896,8 +909,10 @@ class Game {
   }
 
   _resize() {
-    const cont = document.getElementById('gameContainer');
-    this.W = cont.clientWidth; this.H = cont.clientHeight;
+    const vvp = window.visualViewport;
+    this.W = vvp ? vvp.width : document.documentElement.clientWidth;
+    this.H = vvp ? vvp.height : document.documentElement.clientHeight;
+    this.dpr = Math.min(window.devicePixelRatio||1, 2);
     this.canvas.width = this.W * this.dpr; this.canvas.height = this.H * this.dpr;
     this.canvas.style.width = this.W+'px'; this.canvas.style.height = this.H+'px';
     this.speedCanvas.width = this.W; this.speedCanvas.height = this.H;
@@ -907,9 +922,26 @@ class Game {
 
   _setupEvents() {
     window.addEventListener('resize', ()=>this._resize());
-    const flap = ()=>{ this.audio.resume(); this._onFlap(); };
-    this.canvas.addEventListener('click', flap);
-    this.canvas.addEventListener('touchstart', e=>{ e.preventDefault(); flap(); }, {passive:false});
+    if(window.visualViewport) window.visualViewport.addEventListener('resize', ()=>this._resize());
+
+    // Unified flap — single source of truth, deduped via _lastFlapTs
+    const flap = (e) => {
+      if(e) { e.preventDefault(); e.stopPropagation(); }
+      const now = Date.now();
+      if(now - (this._lastFlapTs||0) < 80) return; // debounce: ignore duplicate click+touchstart
+      this._lastFlapTs = now;
+      this.audio.resume();
+      this._onFlap();
+    };
+
+    // Canvas: touchstart only (no click on mobile to avoid 300ms delay + double-fire)
+    this.canvas.addEventListener('touchstart', flap, {passive:false});
+    // Canvas: click fires on desktop where there's no touch
+    this.canvas.addEventListener('click', (e)=>{ if(!this._hadTouch) flap(e); });
+
+    // Track whether device has ever used touch (to suppress synthetic click on mobile)
+    window.addEventListener('touchstart', ()=>{ this._hadTouch=true; }, {once:true, passive:true});
+
     document.addEventListener('keydown', e=>{
       if(e.code==='Space'||e.code==='ArrowUp') { e.preventDefault(); flap(); }
       if(e.code==='Escape'||e.code==='KeyP') this._onPause();
@@ -918,19 +950,30 @@ class Game {
       if(this.easterEggKonami.length>10) this.easterEggKonami.shift();
       if(JSON.stringify(this.easterEggKonami)===JSON.stringify(this.konamiCode)) this._triggerEasterEgg();
     });
-    // UI buttons
-    document.getElementById('pauseBtn').addEventListener('click', ()=>this._onPause());
-    document.getElementById('resumeBtn').addEventListener('click', ()=>this._resume());
-    document.getElementById('restartBtn').addEventListener('click', ()=>this._startGame());
-    document.getElementById('pauseMenuBtn').addEventListener('click', ()=>this._goIntro());
-    document.getElementById('introSettingsBtn').addEventListener('click', ()=>this._openSettings('intro'));
-    document.getElementById('introAchBtn').addEventListener('click', ()=>this._openAchievements('intro'));
-    document.getElementById('goSettingsBtn').addEventListener('click', ()=>this._openSettings('gameover'));
-    document.getElementById('goAchBtn').addEventListener('click', ()=>this._openAchievements('gameover'));
-    document.getElementById('pauseSettingsBtn').addEventListener('click', ()=>this._openSettings('paused'));
-    document.getElementById('settingsBackBtn').addEventListener('click', ()=>this._closeSettings());
-    document.getElementById('achBackBtn').addEventListener('click', ()=>this._closeAchievements());
-    document.getElementById('settingsBtn2').addEventListener('click', ()=>{ if(this.state==='playing') this._openSettings('playing'); });
+    // Helper: wire a button for instant response on both touch and desktop (no 300ms delay)
+    const btn = (id, fn) => {
+      const el = document.getElementById(id);
+      if(!el) return;
+      let _touched = false;
+      el.addEventListener('touchstart', e=>{
+        e.preventDefault(); e.stopPropagation();
+        _touched = true; fn();
+      }, {passive:false});
+      el.addEventListener('click', ()=>{ if(_touched){_touched=false;return;} fn(); });
+    };
+
+    btn('pauseBtn', ()=>this._onPause());
+    btn('resumeBtn', ()=>this._resume());
+    btn('restartBtn', ()=>this._startGame());
+    btn('pauseMenuBtn', ()=>this._goIntro());
+    btn('introSettingsBtn', ()=>this._openSettings('intro'));
+    btn('introAchBtn', ()=>this._openAchievements('intro'));
+    btn('goSettingsBtn', ()=>this._openSettings('gameover'));
+    btn('goAchBtn', ()=>this._openAchievements('gameover'));
+    btn('pauseSettingsBtn', ()=>this._openSettings('paused'));
+    btn('settingsBackBtn', ()=>this._closeSettings());
+    btn('achBackBtn', ()=>this._closeAchievements());
+    btn('settingsBtn2', ()=>{ if(this.state==='playing') this._openSettings('playing'); });
 
     // Toggles
     const toggles = [
@@ -939,12 +982,18 @@ class Game {
     ];
     toggles.forEach(([id,key])=>{
       const el = document.getElementById(id);
-      el.addEventListener('click', ()=>{
+      let _touched = false;
+      const handler = ()=>{
         Settings[key] = !Settings[key];
         el.classList.toggle('on', Settings[key]);
         Settings.save();
         if(key==='music') Settings.music ? this.audio.startMusic() : this.audio.stopMusic();
-      });
+      };
+      el.addEventListener('touchstart', e=>{
+        e.preventDefault(); e.stopPropagation();
+        _touched=true; handler();
+      }, {passive:false});
+      el.addEventListener('click', ()=>{ if(_touched){_touched=false;return;} handler(); });
     });
   }
 
@@ -978,11 +1027,14 @@ class Game {
         btn.style.opacity='0.3'; btn.title='Locked — score more to unlock!';
         btn.style.cursor='not-allowed';
       } else {
-        btn.addEventListener('click', ()=>{
+        let _st=false;
+        const pick = ()=>{
           SaveData.skinIdx=i; SaveData.save();
           if(this.bird) this.bird.skinIdx=i;
           document.querySelectorAll('.skin-btn').forEach((b,j)=>b.classList.toggle('active',j===i));
-        });
+        };
+        btn.addEventListener('touchstart', e=>{e.preventDefault();e.stopPropagation();_st=true;pick();},{passive:false});
+        btn.addEventListener('click', ()=>{if(_st){_st=false;return;}pick();});
       }
       row.appendChild(btn);
     });
