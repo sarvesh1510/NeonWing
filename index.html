@@ -196,15 +196,19 @@
     font-size:11px;letter-spacing:4px;color:rgba(255,255,255,0.3);
     text-transform:uppercase;pointer-events:none;
   }
-  /* Top right buttons */
-  #topRight{position:absolute;top:16px;right:16px;display:flex;gap:8px;z-index:20}
+  /* Top right HUD — pointer-events:none by default during gameplay.
+     JS adds class .interactive only when NOT actively playing, preventing accidental taps. */
+  #topRight{position:absolute;top:12px;right:12px;display:flex;gap:8px;z-index:20;pointer-events:none}
+  #topRight.interactive{pointer-events:all}
   .icon-btn{
-    pointer-events:all;width:36px;height:36px;background:rgba(255,255,255,0.08);
-    border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;font-size:16px;
-    transition:all 0.2s;backdrop-filter:blur(10px);
+    pointer-events:all;width:44px;height:44px;background:rgba(0,0,0,0.5);
+    border:1px solid rgba(255,255,255,0.15);border-radius:10px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;font-size:18px;
+    transition:all 0.2s;backdrop-filter:blur(12px);
   }
-  .icon-btn:hover{background:rgba(255,255,255,0.15);transform:scale(1.1)}
+  .icon-btn:hover{background:rgba(255,255,255,0.15);transform:scale(1.08)}
+  /* Remove settings gear from gameplay HUD — accessible via pause menu only */
+  #settingsBtn2{display:none}
   /* Nav tabs */
   .nav-tabs{display:flex;gap:4px;margin-bottom:16px}
   .nav-tab{
@@ -366,7 +370,7 @@ const CFG = {
 // ─────────────────────────────────────────────────────────────────────────────
 class AudioEngine {
   constructor() {
-    this.ctx = null; this.enabled = true; this.musicEnabled = true;
+    this.ctx = null;  // sound/music state read live from Settings.sound / Settings.music
     this.masterGain = null; this.musicGain = null; this.oscNodes = [];
     this._init();
   }
@@ -379,9 +383,9 @@ class AudioEngine {
       this.musicGain.connect(this.ctx.destination);
     } catch(e) { this.ctx = null; }
   }
-  resume() { if(this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+  resume() { if(this.ctx && this.ctx.state==='suspended') this.ctx.resume().catch(()=>{}); }
   _osc(freq, type, duration, vol, delay=0) {
-    if(!this.ctx || !this.enabled) return;
+    if(!this.ctx || !Settings.sound) return;
     const t = this.ctx.currentTime + delay;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -392,7 +396,7 @@ class AudioEngine {
     osc.start(t); osc.stop(t + duration);
   }
   _noise(duration, vol, delay=0) {
-    if(!this.ctx || !this.enabled) return;
+    if(!this.ctx || !Settings.sound) return;
     const t = this.ctx.currentTime + delay;
     const bufSize = this.ctx.sampleRate * duration;
     const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
@@ -423,11 +427,11 @@ class AudioEngine {
     this._osc(110,'sawtooth',0.3,0.6,0.1); this._osc(55,'sine',0.4,0.4,0.2);
   }
   startMusic() {
-    if(!this.ctx || !this.musicEnabled) return;
+    if(!this.ctx || !Settings.music) return;
     this._playBeat();
   }
   _playBeat() {
-    if(!this.ctx || !this.musicEnabled) return;
+    if(!this.ctx || !Settings.music) return;
     const scale = [220,247,261,294,329,349,392,440];
     let t = this.ctx.currentTime;
     for(let i=0;i<8;i++) {
@@ -986,7 +990,12 @@ class Game {
         Settings[key] = !Settings[key];
         el.classList.toggle('on', Settings[key]);
         Settings.save();
-        if(key==='music') Settings.music ? this.audio.startMusic() : this.audio.stopMusic();
+        if(key==='music') {
+          if(Settings.music) { this.audio.startMusic(); }
+          else { this.audio.stopMusic(); clearTimeout(this.audio._musicTimer); }
+        }
+        // Sound: no extra action needed — _osc/_noise read Settings.sound directly
+        // Vibration/Particles/ReducedMotion/HighContrast read Settings.* inline — auto-apply
       };
       el.addEventListener('touchstart', e=>{
         e.preventDefault(); e.stopPropagation();
@@ -1056,7 +1065,10 @@ class Game {
   _showScreen(id) {
     document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
     if(id) document.getElementById(id).classList.add('active');
-    document.getElementById('hud').style.display = (id===null && this.state==='playing') ? 'flex' : 'none';
+    const playing = (id===null && this.state==='playing');
+    document.getElementById('hud').style.display = playing ? 'flex' : 'none';
+    // Only make HUD buttons interactive when NOT actively playing — prevents accidental taps
+    document.getElementById('topRight').classList.toggle('interactive', !playing);
   }
 
   _openSettings(from) {
