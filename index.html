@@ -371,18 +371,19 @@ const BIRD_R = 16; // collision radius (tight)
 
 // ── PIPE PARAMS ──
 const PIPE_W = 68;
-const GAP_BASE = 200, GAP_MIN = 145;
-const SPD_BASE = 210, SPD_MAX = 380;
-const INT_BASE = 1.85, INT_MIN = 1.1;
+const GAP_BASE = 220, GAP_MIN = 170;
+const SPD_BASE = 190, SPD_MAX = 300;
+const INT_BASE = 2.0, INT_MIN = 1.4;
 
 function resetDifficulty(){
   pipeSpeed=SPD_BASE; pipeGap=GAP_BASE; pipeSpawnInt=INT_BASE; pipeTimer=INT_BASE*.5;
 }
 function scaleDifficulty(){
-  const t = Math.min(score/55, 1);
-  pipeSpeed = SPD_BASE + (SPD_MAX-SPD_BASE)*t;
-  pipeGap   = GAP_BASE - (GAP_BASE-GAP_MIN)*t;
-  pipeSpawnInt = INT_BASE - (INT_BASE-INT_MIN)*t;
+  const t = Math.min(score / 100, 1);
+
+  pipeSpeed = 190 + (300 - 190) * t;
+  pipeGap = 220 - (220 - 170) * t;
+  pipeSpawnInt = 2.0 - (2.0 - 1.4) * t;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -679,7 +680,7 @@ function addScore(){
 }
 
 function triggerHyper(){
-  hyperMode=true; hyperTimer=7; hyperFired=true;
+  hyperMode=true; hyperTimer=5; hyperFired=true;
   Audio.hyper();
   shakeAmt=10;
 }
@@ -792,7 +793,7 @@ function update(dt){
   if(pipeTimer<=0){ spawnPipe(); pipeTimer=pipeSpawnInt; }
   for(let i=pipes.length-1;i>=0;i--){
     const p=pipes[i];
-    p.x -= (hyperMode?p.speed*1.4:p.speed)*dt;
+    p.x -= (hyperMode?p.speed*1.15:p.speed)*dt;
     p.eph+=dt*2.5;
     if(!p.passed && p.x+PIPE_W < bx){ p.passed=true; addScore(); }
     if(p.x+PIPE_W < -20) pipes.splice(i,1);
