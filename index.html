@@ -667,7 +667,7 @@ function spawnPipe(){
   const m=H*.12;
   const cy = m + Math.random()*(H-m*2-pipeGap) + pipeGap/2;
   pipes.push({
-    x:W+PIPE_W, gap:pipeGap, cy, speed:hyperMode?pipeSpeed*1.08:pipeSpeed,
+    x:W+PIPE_W, gap:pipeGap, cy, speed:hyperMode?pipeSpeed*1.12:pipeSpeed,
     passed:false, nearDone:false, eph:Math.random()*Math.PI*2, theme:pipeTheme
   });
   pipeTheme=(pipeTheme+1)%6;
@@ -692,7 +692,7 @@ function addScore(){
 }
 
 function triggerHyper(){
-  hyperMode=true; hyperTimer=6; hyperFired=true;
+  hyperMode=true; hyperTimer=5; hyperFired=true;
   Audio.hyper();
   shakeAmt=10;
 }
@@ -805,7 +805,7 @@ function update(dt){
   if(pipeTimer<=0){ spawnPipe(); pipeTimer=pipeSpawnInt; }
   for(let i=pipes.length-1;i>=0;i--){
     const p=pipes[i];
-    p.x -= (hyperMode?p.speed*1.07:p.speed)*dt;
+    p.x -= (hyperMode?p.speed*1.10:p.speed)*dt;
     p.eph+=dt*2.5;
     if(!p.passed && p.x+PIPE_W < bx){ p.passed=true; addScore(); }
     if(p.x+PIPE_W < -20) pipes.splice(i,1);
