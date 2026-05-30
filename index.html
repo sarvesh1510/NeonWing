@@ -332,6 +332,7 @@ resize();
 // any   → paused → playing
 // any   → settings / achievements
 let STATE = 'intro';
+let waitingResume = false;
 let prevState = 'intro'; // for back-navigation from settings/achievements
 
 // ── GAME VARS ──
@@ -402,9 +403,17 @@ function onTap(x, y){
     return;
   }
   if(STATE==='ready'){
-    startPlaying();
-    return;
-  }
+  startPlaying();
+  return;
+}
+
+if(STATE==='readyResume'){
+  waitingResume = false;
+  STATE='playing';
+  bvy = FLAP_V * 0.6; // small lift when resuming
+  lastTs = 0;
+  return;
+}
   if(STATE==='playing'){
     // Pause zone: top strip
     if(y <= PAUSE_ZONE_H){
@@ -588,7 +597,10 @@ function doPause(){
 
 function doResume(){
   if(STATE!=='paused') return;
-  STATE='playing'; lastTs=0; hideAll();
+
+  STATE='readyResume';
+  waitingResume = true;
+  hideAll();
 }
 
 function openSettings(from){
@@ -756,7 +768,7 @@ function update(dt){
   shakeAmt = Math.max(0, shakeAmt-12*dt);
   shakeX=(Math.random()-.5)*shakeAmt; shakeY=(Math.random()-.5)*shakeAmt;
 
-  if(STATE==='ready'){
+  if(STATE==='ready' || STATE==='readyResume'){
     bBounce=Math.sin(Date.now()*.003)*9;
     bWing+=4*dt; bAngle=Math.sin(Date.now()*.003)*.12; bGlow=(Math.sin(Date.now()*.004)+1)*.5;
     readyAlpha=Math.min(1,readyAlpha+dt*3);
@@ -1009,7 +1021,7 @@ function drawHUD(){
 }
 
 function drawReady(){
-  if(STATE!=='ready') return;
+  if(STATE!=='ready' && STATE!=='readyResume') return;
   ctx.save();
   ctx.globalAlpha=Math.min(1,readyAlpha);
   // Dark vignette
@@ -1021,14 +1033,22 @@ function drawReady(){
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.shadowBlur=20; ctx.shadowColor='#00f5ff';
   ctx.fillStyle='rgba(255,255,255,.9)';
-  ctx.fillText('GET READY', W/2, H*.3);
+  ctx.fillText(
+  STATE==='readyResume' ? 'TAP TO RESUME' : 'GET READY',
+  W/2,
+  H*.3
+);
   // Big tap prompt
   ctx.font=`700 ${Math.round(clamp(W*.05,16,22))}px 'Courier New',monospace`;
   const tapAlpha=.5+Math.sin(Date.now()*.004)*.45;
   ctx.globalAlpha=Math.min(1,readyAlpha)*tapAlpha;
   ctx.shadowBlur=12; ctx.shadowColor='rgba(255,255,255,.5)';
   ctx.fillStyle='#fff';
-  ctx.fillText('TAP TO FLY', W/2, H*.55);
+  ctx.fillText(
+  STATE==='readyResume' ? 'TAP SCREEN' : 'TAP TO FLY',
+  W/2,
+  H*.55
+);
   // Arrow bounce
   ctx.globalAlpha=Math.min(1,readyAlpha)*(.4+Math.abs(Math.sin(Date.now()*.004))*.5);
   ctx.font=`900 ${Math.round(clamp(W*.04,14,20))}px 'Courier New',monospace`;
